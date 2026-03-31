@@ -14,7 +14,12 @@ from openpyxl.drawing.image import Image as XLImage
 from openpyxl.utils import get_column_letter
 
 from pypdf import PdfReader, PdfWriter
-
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 
 # =========================
 # CONFIG
