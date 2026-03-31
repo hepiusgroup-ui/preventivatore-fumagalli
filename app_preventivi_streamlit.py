@@ -186,9 +186,9 @@ def smart_search(query: str, df: pd.DataFrame, limit: int = 20) -> pd.DataFrame:
 
 def money(value: float) -> str:
     try:
-        return f"CHF {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"EUR {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
-        return "CHF 0,00"
+        return "EUR 0,00"
 
 
 def parse_float(value: Any, default: float = 0.0) -> float:
@@ -317,7 +317,7 @@ def build_quote_excel(customer_data: Dict[str, str], items_df: pd.DataFrame, ext
         thin = Side(style="thin", color=WHITE)
         cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    currency_fmt = '#,##0.00 [$CHF-100C]'
+    currency_fmt = '€ #,##0.00'
     pct_fmt = '0.0%'
 
     data_start = table_row + 1
