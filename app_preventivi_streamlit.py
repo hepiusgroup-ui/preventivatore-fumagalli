@@ -396,8 +396,219 @@ def build_quote_excel(customer_data: Dict[str, str], items_df: pd.DataFrame, ext
     wb.save(bio)
     bio.seek(0)
     return bio.getvalue()
+def build_quote_pdf(
+    customer_data: Dict[str, str],
+    items_df: pd.DataFrame,
+    extra_discount_pct: float,
+    fumagalli_logo: Optional[Path],
+    hepius_logo: Optional[Path]
+) -> bytes:
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=18 * mm,
+        leftMargin=18 * mm,
+        topMargin=16 * mm,
+        bottomMargin=16 * mm
+    )
 
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "TitleCustom",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=20,
+        textColor=colors.HexColor("#1F4E78"),
+        alignment=TA_RIGHT,
+        spaceAfter=8
+    )
+    label_style = ParagraphStyle(
+        "Label",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9,
+        textColor=colors.HexColor("#1F4E78"),
+        spaceAfter=2
+    )
+    value_style = ParagraphStyle(
+        "Value",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        textColor=colors.black,
+        spaceAfter=4
+    )
+    note_style = ParagraphStyle(
+        "Note",
+        parent=styles["Normal"],
+        fontName="Helvetica-Oblique",
+        fontSize=8,
+        textColor=colors.grey
+    )
 
+    story = []
+
+    # Header con loghi + titolo
+    header_data = []
+
+    left_parts = []
+    if fumagalli_logo and Path(fumagalli_logo).exists():
+        left_parts.append(RLImage(str(fumagalli_logo), width=42 * mm, height=16 * mm))
+    if hepius_logo and Path(hepius_logo).exists():
+        left_parts.append(RLImage(str(hepius_logo), width=35 * mm, height=14 * mm))
+
+    left_cell = left_parts if left_parts else [Paragraph("Fumagalli Care&Reha", value_style)]
+    right_cell = [
+        Paragraph("PREVENTIVO", title_style),
+        Paragraph(f"<b>Data:</b> {datetime.now().strftime('%d/%m/%Y')}", value_style),
+        Paragraph(f"<b>Numero:</b> OF-{datetime.now().strftime('%Y%m%d-%H%M')}", value_style),
+    ]
+
+    header_table = Table([[left_cell, right_cell]], colWidths=[80 * mm, 90 * mm])
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 8 * mm))
+
+    # Dati cliente
+    story.append(Paragraph("DATI CLIENTE", label_style))
+
+    cliente_rows = [
+        ["Cliente", customer_data.get("cliente", "")],
+        ["Attenzione", customer_data.get("contatto", "")],
+        ["Indirizzo", customer_data.get("indirizzo", "")],
+        ["CAP / Città", customer_data.get("cap_citta", "")],
+        ["Email", customer_data.get("email", "")],
+        ["Telefono", customer_data.get("telefono", "")],
+        ["Oggetto", customer_data.get("oggetto", "")],
+    ]
+
+    cliente_table = Table(cliente_rows, colWidths=[35 * mm, 135 * mm])
+    cliente_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.white),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#1F4E78")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#D9D9D9")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(cliente_table)
+    story.append(Spacer(1, 8 * mm))
+
+    # Tabella articoli
+    table_data = [[
+        "Codice", "Descrizione", "Q.tà", "Prezzo unit.", "Sconto %", "Netto riga"
+    ]]
+
+    subtotal = 0.0
+    gross = 0.0
+
+    for _, item in items_df.iterrows():
+        qty = float(item["quantita"])
+        price = float(item["prezzo_unitario"])
+        discount = float(item["sconto_riga_pct"])
+        row_total = qty * price * (1 - discount / 100.0)
+
+        gross += qty * price
+        subtotal += row_total
+
+        table_data.append([
+            str(item["codice"]),
+            str(item["descrizione"]),
+            f"{qty:,.0f}".replace(",", "."),
+            money(price),
+            f"{discount:.1f}%",
+            money(row_total)
+        ])
+
+    total_final = subtotal * (1 - extra_discount_pct / 100.0)
+
+    offer_table = Table(
+        table_data,
+        colWidths=[25 * mm, 78 * mm, 14 * mm, 24 * mm, 18 * mm, 24 * mm],
+        repeatRows=1
+    )
+    offer_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#D9D9D9")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(offer_table)
+    story.append(Spacer(1, 6 * mm))
+
+    # Totali
+    totals_data = [
+        ["Totale lordo", money(gross)],
+        ["Subtotale dopo sconti riga", money(subtotal)],
+        ["Sconto extra finale", f"{extra_discount_pct:.1f}%"],
+        ["Totale finale offerta", money(total_final)],
+    ]
+    totals_table = Table(totals_data, colWidths=[55 * mm, 35 * mm], hAlign="RIGHT")
+    totals_table.setStyle(TableStyle([
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#1F4E78")),
+        ("FONTNAME", (0, 0), (-1, -2), "Helvetica-Bold"),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E2F0D9")),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#D9D9D9")),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(totals_table)
+    story.append(Spacer(1, 6 * mm))
+
+    # Note finali
+    story.append(Paragraph(
+        "Prezzi espressi in EURO, IVA e costi di spedizione esclusi salvo diversa indicazione. "
+        "Sconti di riga ed eventuale sconto finale sono cumulativi.",
+        note_style
+    ))
+    story.append(Spacer(1, 4 * mm))
+    story.append(Paragraph("Fumagalli Care&Reha Srl", label_style))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+def merge_main_pdf_with_catalogs(main_pdf_bytes: bytes, catalog_pdf_list: List[bytes]) -> bytes:
+    writer = PdfWriter()
+
+    main_reader = PdfReader(io.BytesIO(main_pdf_bytes))
+    for page in main_reader.pages:
+        writer.add_page(page)
+
+    for pdf_bytes in catalog_pdf_list:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        for page in reader.pages:
+            writer.add_page(page)
+
+    output = io.BytesIO()
+    writer.write(output)
+    output.seek(0)
+    return output.getvalue()
 def compute_totals(items: List[Dict[str, Any]], extra_discount_pct: float) -> Dict[str, float]:
     subtotal = 0.0
     gross = 0.0
@@ -805,9 +1016,18 @@ if st.session_state.cart_items:
         hepius_logo=hep_logo_path
     )
 
-    file_name = f"preventivo_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    main_pdf_bytes = build_quote_pdf(
+        customer_data=customer_data,
+        items_df=export_df,
+        extra_discount_pct=float(extra_discount_pct),
+        fumagalli_logo=fum_logo_path,
+        hepius_logo=hep_logo_path
+    )
 
-    dl1, dl2 = st.columns(2)
+    file_name = f"preventivo_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    pdf_file_name = f"preventivo_cliente_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+
+    dl1, dl2, dl3 = st.columns(3)
 
     with dl1:
         st.download_button(
@@ -818,33 +1038,49 @@ if st.session_state.cart_items:
         )
 
     with dl2:
-        genera_allegato_catalogo = st.checkbox(
-        "Genera PDF catalogo per ogni riga offerta",
-        value=True,
-        help="Per ogni articolo genera un PDF con pagina sezione + pagina prodotto."
-    )
+        st.download_button(
+            label="Scarica PDF preventivo",
+            data=main_pdf_bytes,
+            file_name=pdf_file_name,
+            mime="application/pdf"
+        )
 
-    if genera_allegato_catalogo:
-        st.markdown("### PDF catalogo per riga")
+    with dl3:
+        genera_pdf_cliente_completo = st.checkbox(
+            "PDF cliente completo con allegati catalogo",
+            value=True,
+            help="Unisce preventivo PDF e schede catalogo prodotti in un unico file."
+        )
 
-        for idx, row in export_df.iterrows():
-            codice = str(row.get("codice", f"articolo_{idx+1}")).strip()
+    if genera_pdf_cliente_completo:
+        catalog_pdfs = []
+        unmatched_codes = []
 
+        for _, row in export_df.iterrows():
+            codice = str(row.get("codice", "")).strip()
             try:
                 single_pdf = build_catalog_pdf_for_single_item(
                     item_row=row,
                     catalog_pdf_path=DEFAULT_CATALOGO_PDF,
                     mapping_file=DEFAULT_MAPPA_CATALOGO
                 )
+                catalog_pdfs.append(single_pdf)
+            except Exception:
+                unmatched_codes.append(codice)
 
-                st.download_button(
-                    label=f"Scarica catalogo {codice}",
-                    data=single_pdf,
-                    file_name=f"catalogo_{codice}.pdf",
-                    mime="application/pdf",
-                    key=f"catalogo_pdf_{idx}"
-                )
-            except Exception as e:
-                st.warning(f"{codice}: {e}")
+        merged_pdf_bytes = merge_main_pdf_with_catalogs(main_pdf_bytes, catalog_pdfs)
+
+        st.download_button(
+            label="Scarica PDF cliente completo",
+            data=merged_pdf_bytes,
+            file_name=f"preventivo_cliente_completo_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf"
+        )
+
+        if unmatched_codes:
+            st.warning(
+                "Attenzione: nessun allegato catalogo trovato per i seguenti articoli: "
+                + ", ".join(unmatched_codes)
+            )
 else:
     st.info("Nessun articolo nel preventivo. Cerca un prodotto e aggiungilo.")
