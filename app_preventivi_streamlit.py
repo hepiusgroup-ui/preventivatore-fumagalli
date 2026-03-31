@@ -813,7 +813,7 @@ if st.session_state.cart_items:
         )
 
     with dl2:
-    genera_allegato_catalogo = st.checkbox(
+        genera_allegato_catalogo = st.checkbox(
         "Genera PDF catalogo per ogni riga offerta",
         value=True,
         help="Per ogni articolo genera un PDF con pagina sezione + pagina prodotto."
