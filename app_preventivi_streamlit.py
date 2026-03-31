@@ -412,13 +412,12 @@ def compute_totals(items: List[Dict[str, Any]], extra_discount_pct: float) -> Di
 def load_catalog_mapping(mapping_file: str = DEFAULT_MAPPA_CATALOGO) -> pd.DataFrame:
     p = Path(mapping_file)
     if not p.exists():
-        raise FileNotFoundError(
-            f"Non trovo il file di mapping catalogo: {mapping_file}"
-        )
+        raise FileNotFoundError(f"Non trovo il file di mapping catalogo: {mapping_file}")
 
     df = pd.read_excel(p)
 
     required_cols = [
+        "codice",
         "chiave_articolo",
         "sezione",
         "pagina_sezione",
@@ -429,13 +428,15 @@ def load_catalog_mapping(mapping_file: str = DEFAULT_MAPPA_CATALOGO) -> pd.DataF
     if missing:
         raise ValueError(f"Nel mapping catalogo mancano le colonne: {missing}")
 
+    df["codice"] = df["codice"].astype(str).str.strip().str.upper()
     df["chiave_articolo"] = df["chiave_articolo"].astype(str).str.strip().str.upper()
     df["sezione"] = df["sezione"].astype(str).str.strip()
+
     df["pagina_sezione"] = pd.to_numeric(df["pagina_sezione"], errors="coerce")
     df["pagina_inizio"] = pd.to_numeric(df["pagina_inizio"], errors="coerce")
     df["pagina_fine"] = pd.to_numeric(df["pagina_fine"], errors="coerce")
 
-    df = df.dropna(subset=["chiave_articolo", "pagina_sezione", "pagina_inizio", "pagina_fine"]).copy()
+    df = df.dropna(subset=["pagina_sezione", "pagina_inizio", "pagina_fine"]).copy()
 
     df["pagina_sezione"] = df["pagina_sezione"].astype(int)
     df["pagina_inizio"] = df["pagina_inizio"].astype(int)
@@ -451,26 +452,79 @@ def find_catalog_rows_for_items(items_df: pd.DataFrame, mapping_df: pd.DataFrame
         descr = str(item.get("descrizione", "")).strip().upper()
         codice = str(item.get("codice", "")).strip().upper()
 
-        # prima prova col codice, poi con la descrizione
-        matches = mapping_df[
-            (mapping_df["chiave_articolo"] == codice) |
-            (mapping_df["chiave_articolo"] == descr)
-        ].copy()
+        matches = pd.DataFrame()
 
-        if matches.empty:
-            # fallback: contiene il nome nella descrizione
+        # 1. match per codice
+        if "codice" in mapping_df.columns:
             matches = mapping_df[
-                mapping_df["chiave_articolo"].apply(lambda x: x in descr if isinstance(x, str) else False)
+                mapping_df["codice"].astype(str).str.strip().str.upper() == codice
+            ].copy()
+
+        # 2. fallback: chiave_articolo uguale alla descrizione
+        if matches.empty:
+            matches = mapping_df[
+                mapping_df["chiave_articolo"].astype(str).str.strip().str.upper() == descr
+            ].copy()
+
+        # 3. fallback: chiave_articolo contenuta nella descrizione
+        if matches.empty:
+            matches = mapping_df[
+                mapping_df["chiave_articolo"].astype(str).str.strip().str.upper().apply(
+                    lambda x: x in descr if isinstance(x, str) and x != "" else False
+                )
             ].copy()
 
         if not matches.empty:
-            found_rows.append(matches.iloc[0])
+            row = matches.iloc[0].copy()
+            row["codice_offerta"] = codice
+            row["descrizione_offerta"] = descr
+            found_rows.append(row)
 
     if not found_rows:
         return pd.DataFrame(columns=mapping_df.columns)
 
     return pd.DataFrame(found_rows).drop_duplicates().reset_index(drop=True)
+def build_catalog_pdf_for_single_item(
+    item_row: pd.Series,
+    catalog_pdf_path: str = DEFAULT_CATALOGO_PDF,
+    mapping_file: str = DEFAULT_MAPPA_CATALOGO
+) -> bytes:
+    catalog_path = Path(catalog_pdf_path)
+    if not catalog_path.exists():
+        raise FileNotFoundError(f"Non trovo il catalogo PDF: {catalog_pdf_path}")
 
+    mapping_df = load_catalog_mapping(mapping_file)
+    item_df = pd.DataFrame([item_row])
+    selected_rows = find_catalog_rows_for_items(item_df, mapping_df)
+
+    if selected_rows.empty:
+        raise ValueError(f"Nessuna corrispondenza trovata per articolo {item_row.get('codice', '')}")
+
+    row = selected_rows.iloc[0]
+
+    reader = PdfReader(str(catalog_path))
+    writer = PdfWriter()
+    added_pages = set()
+
+    pagina_sezione = int(row["pagina_sezione"])
+    pagina_inizio = int(row["pagina_inizio"])
+    pagina_fine = int(row["pagina_fine"])
+
+    # pagina introduttiva sezione
+    if 1 <= pagina_sezione <= len(reader.pages) and pagina_sezione not in added_pages:
+        writer.add_page(reader.pages[pagina_sezione - 1])
+        added_pages.add(pagina_sezione)
+
+    # pagine prodotto
+    for page_num in range(pagina_inizio, pagina_fine + 1):
+        if 1 <= page_num <= len(reader.pages) and page_num not in added_pages:
+            writer.add_page(reader.pages[page_num - 1])
+            added_pages.add(page_num)
+
+    output = io.BytesIO()
+    writer.write(output)
+    output.seek(0)
+    return output.getvalue()
 
 def build_catalog_attachment_pdf(
     items_df: pd.DataFrame,
@@ -759,22 +813,33 @@ if st.session_state.cart_items:
         )
 
     with dl2:
-        genera_allegato_catalogo = st.checkbox(
-            "Genera allegato catalogo prodotti offerti",
-            value=True,
-            help="Aggiunge una pagina introduttiva per ogni sezione e le pagine prodotto corrispondenti."
-        )
+    genera_allegato_catalogo = st.checkbox(
+        "Genera PDF catalogo per ogni riga offerta",
+        value=True,
+        help="Per ogni articolo genera un PDF con pagina sezione + pagina prodotto."
+    )
 
-        if genera_allegato_catalogo:
+    if genera_allegato_catalogo:
+        st.markdown("### PDF catalogo per riga")
+
+        for idx, row in export_df.iterrows():
+            codice = str(row.get("codice", f"articolo_{idx+1}")).strip()
+
             try:
-                catalog_bytes = build_catalog_attachment_pdf(export_df)
+                single_pdf = build_catalog_pdf_for_single_item(
+                    item_row=row,
+                    catalog_pdf_path=catalog_pdf_path,
+                    mapping_file=DEFAULT_MAPPA_CATALOGO
+                )
+
                 st.download_button(
-                    label="Scarica allegato catalogo PDF",
-                    data=catalog_bytes,
-                    file_name=f"allegato_catalogo_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                    mime="application/pdf"
+                    label=f"Scarica catalogo {codice}",
+                    data=single_pdf,
+                    file_name=f"catalogo_{codice}.pdf",
+                    mime="application/pdf",
+                    key=f"catalogo_pdf_{idx}"
                 )
             except Exception as e:
-                st.warning(f"Allegato catalogo non generato: {e}")
+                st.warning(f"{codice}: {e}")
 else:
     st.info("Nessun articolo nel preventivo. Cerca un prodotto e aggiungilo.")
