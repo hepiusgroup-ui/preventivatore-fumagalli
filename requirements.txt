@@ -4,3 +4,4 @@ openpyxl>=3.1
 rapidfuzz>=3.9
 pillow>=10.0
 pypdf
+reportlab
