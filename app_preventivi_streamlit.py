@@ -25,6 +25,25 @@ st.set_page_config(
     page_icon="📄",
     layout="wide"
 )
+ACCESS_PASSWORD = "fumagalli2026"
+
+def require_login():
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        st.title("Accesso riservato")
+        password = st.text_input("Inserisci password", type="password")
+
+        if st.button("Accedi"):
+            if password == ACCESS_PASSWORD:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Password non corretta")
+
+        st.stop()
+require_login()
 ALLOWED_EMAILS = {
     "f.nishino@fumagallicare.com",
     "sales@fumagallicare.com",
