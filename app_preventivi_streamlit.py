@@ -25,7 +25,29 @@ st.set_page_config(
     page_icon="📄",
     layout="wide"
 )
+ALLOWED_EMAILS = {
+    "f.nishino@fumagallicare.com",
+    "sales@fumagallicare.com",
+    "commerciale@fumagallicare.com",
+    "pietro@roll-star.ch",
+    "commerciale@roll-star.ch",
+}
 
+def require_login():
+    if not st.user.is_logged_in:
+        st.title("Accesso riservato")
+        st.write("Effettua il login per usare il preventivatore.")
+        st.button("Accedi", on_click=st.login)
+        st.stop()
+
+    user_email = str(st.user.get("email", "")).lower().strip()
+
+    if user_email not in ALLOWED_EMAILS:
+        st.error("Utente non autorizzato.")
+        st.button("Esci", on_click=st.logout)
+        st.stop()
+
+require_login()
 APP_TITLE = "Preventivatore Fumagalli Care&Reha"
 DEFAULT_LISTINO_FILES = [
     "listino_fumagalli_riabilitazione.xlsx",
