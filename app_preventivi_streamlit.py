@@ -43,6 +43,7 @@ def require_login():
                 st.error("Password non corretta")
 
         st.stop()
+
 require_login()
 ALLOWED_EMAILS = {
     "f.nishino@fumagallicare.com",
