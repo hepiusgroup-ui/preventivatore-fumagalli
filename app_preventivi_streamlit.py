@@ -19,7 +19,7 @@ from pypdf import PdfReader, PdfWriter
 # =========================
 # CONFIG
 # =========================
-
+DEFAULT_CATALOGO_PDF = "FCR_Catalogo Riabilitazione (1).pdf"
 st.set_page_config(
     page_title="Fumagalli Care&Reha - Preventivi",
     page_icon="📄",
@@ -828,7 +828,7 @@ if st.session_state.cart_items:
             try:
                 single_pdf = build_catalog_pdf_for_single_item(
                     item_row=row,
-                    catalog_pdf_path=catalog_pdf_path,
+                    catalog_pdf_path=DEFAULT_CATALOGO_PDF,
                     mapping_file=DEFAULT_MAPPA_CATALOGO
                 )
 
