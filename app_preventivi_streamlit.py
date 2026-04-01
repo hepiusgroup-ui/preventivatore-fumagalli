@@ -612,7 +612,7 @@ def build_quote_pdf(
         [Paragraph("<b>Totale lordo</b>", value_style), Paragraph(money(gross), value_style)],
         [Paragraph("<b>Subtotale dopo sconti riga</b>", value_style), Paragraph(money(subtotal), value_style)],
         [Paragraph("<b>Sconto extra finale</b>", value_style), Paragraph(f"{extra_discount_pct:.1f}%", value_style)],
-        [Paragraph("<b>Totale finale offerta</b>", value_style), Paragraph(money(total_final), value_style)],
+        [Paragraph("<b>Totale finale offerta escluso IVA</b>", value_style), Paragraph(money(total_final), value_style)],
     ]
 
     totals_table = Table(totals_data, colWidths=[58 * mm, 34 * mm], hAlign="RIGHT")
