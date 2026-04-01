@@ -792,9 +792,10 @@ def build_quote_pdf(
 def merge_main_pdf_with_catalogs(main_pdf_bytes: bytes, catalog_pdf_list: List[bytes]) -> bytes:
     writer = PdfWriter()
 
-    main_reader = PdfReader(io.BytesIO(main_pdf_bytes))
-    for page in main_reader.pages:
-        writer.add_page(page)
+    if main_pdf_bytes:
+        main_reader = PdfReader(io.BytesIO(main_pdf_bytes))
+        for page in main_reader.pages:
+            writer.add_page(page)
 
     for pdf_bytes in catalog_pdf_list:
         reader = PdfReader(io.BytesIO(pdf_bytes))
@@ -1249,34 +1250,35 @@ if st.session_state.cart_items:
         )
 
     if genera_pdf_cliente_completo:
-        catalog_pdfs = []
-        unmatched_codes = []
+    catalog_pdfs = []
+    unmatched_codes = []
 
-        for _, row in export_df.iterrows():
-            codice = str(row.get("codice", "")).strip()
-            try:
-                single_pdf = build_catalog_pdf_for_single_item(
-                    item_row=row,
-                    catalog_pdf_path=DEFAULT_CATALOGO_PDF,
-                    mapping_file=DEFAULT_MAPPA_CATALOGO
-                )
-                catalog_pdfs.append(single_pdf)
-            except Exception:
-                unmatched_codes.append(codice)
+    for _, row in export_df.iterrows():
+        codice = str(row.get("codice", "")).strip()
+        try:
+            single_pdf = build_catalog_pdf_for_single_item(
+                item_row=row,
+                catalog_pdf_path=DEFAULT_CATALOGO_PDF,
+                mapping_file=DEFAULT_MAPPA_CATALOGO
+            )
+            catalog_pdfs.append(single_pdf)
+        except Exception:
+            unmatched_codes.append(codice)
 
-        merged_pdf_bytes = merge_main_pdf_with_catalogs(main_pdf_bytes, catalog_pdfs)
+    if catalog_pdfs:
+        schede_tecniche_pdf = merge_main_pdf_with_catalogs(b"", catalog_pdfs)
 
         st.download_button(
-            label="Scarica PDF cliente completo",
-            data=merged_pdf_bytes,
-            file_name=f"preventivo_cliente_completo_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            label="Scarica PDF schede tecniche",
+            data=schede_tecniche_pdf,
+            file_name=f"schede_tecniche_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf"
         )
 
-        if unmatched_codes:
-            st.warning(
-                "Attenzione: nessun allegato catalogo trovato per i seguenti articoli: "
-                + ", ".join(unmatched_codes)
-            )
+    if unmatched_codes:
+        st.warning(
+            "Attenzione: nessun allegato catalogo trovato per i seguenti articoli: "
+            + ", ".join(unmatched_codes)
+        )
 else:
     st.info("Nessun articolo nel preventivo. Cerca un prodotto e aggiungilo.")
