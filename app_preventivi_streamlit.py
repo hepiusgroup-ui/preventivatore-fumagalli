@@ -407,13 +407,14 @@ def build_quote_pdf(
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=18 * mm,
-        leftMargin=18 * mm,
-        topMargin=16 * mm,
-        bottomMargin=16 * mm
+        rightMargin=15 * mm,
+        leftMargin=15 * mm,
+        topMargin=14 * mm,
+        bottomMargin=14 * mm
     )
 
     styles = getSampleStyleSheet()
+
     title_style = ParagraphStyle(
         "TitleCustom",
         parent=styles["Title"],
@@ -421,8 +422,9 @@ def build_quote_pdf(
         fontSize=20,
         textColor=colors.HexColor("#1F4E78"),
         alignment=TA_RIGHT,
-        spaceAfter=8
+        spaceAfter=6
     )
+
     label_style = ParagraphStyle(
         "Label",
         parent=styles["Normal"],
@@ -431,23 +433,217 @@ def build_quote_pdf(
         textColor=colors.HexColor("#1F4E78"),
         spaceAfter=2
     )
+
     value_style = ParagraphStyle(
         "Value",
         parent=styles["Normal"],
         fontName="Helvetica",
         fontSize=9,
         textColor=colors.black,
-        spaceAfter=4
+        leading=11,
+        spaceAfter=3
     )
+
     note_style = ParagraphStyle(
         "Note",
         parent=styles["Normal"],
         fontName="Helvetica-Oblique",
         fontSize=8,
-        textColor=colors.grey
+        textColor=colors.grey,
+        leading=10
+    )
+
+    cell_style = ParagraphStyle(
+        "CellStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8,
+        leading=10
+    )
+
+    cell_bold_style = ParagraphStyle(
+        "CellBoldStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.white
     )
 
     story = []
+
+    # =========================
+    # HEADER
+    # =========================
+    left_parts = []
+
+    if fumagalli_logo and Path(fumagalli_logo).exists():
+        try:
+            left_parts.append(RLImage(str(fumagalli_logo), width=42 * mm, height=16 * mm))
+            left_parts.append(Spacer(1, 2 * mm))
+        except Exception:
+            pass
+
+    if hepius_logo and Path(hepius_logo).exists():
+        try:
+            left_parts.append(RLImage(str(hepius_logo), width=35 * mm, height=14 * mm))
+        except Exception:
+            pass
+
+    if not left_parts:
+        left_parts = [Paragraph("Fumagalli Care&Reha Srl", value_style)]
+
+    right_cell = [
+        Paragraph("PREVENTIVO", title_style),
+        Paragraph(f"<b>Data:</b> {datetime.now().strftime('%d/%m/%Y')}", value_style),
+        Paragraph(f"<b>Numero:</b> OF-{datetime.now().strftime('%Y%m%d-%H%M')}", value_style),
+    ]
+
+    header_table = Table(
+        [[left_parts, right_cell]],
+        colWidths=[78 * mm, 92 * mm]
+    )
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 6 * mm))
+
+    # =========================
+    # DATI CLIENTE
+    # =========================
+    story.append(Paragraph("DATI CLIENTE", label_style))
+
+    cliente_rows = [
+        [Paragraph("<b>Cliente</b>", value_style), Paragraph(str(customer_data.get("cliente", "")), value_style)],
+        [Paragraph("<b>Attenzione</b>", value_style), Paragraph(str(customer_data.get("contatto", "")), value_style)],
+        [Paragraph("<b>Indirizzo</b>", value_style), Paragraph(str(customer_data.get("indirizzo", "")), value_style)],
+        [Paragraph("<b>CAP / Città</b>", value_style), Paragraph(str(customer_data.get("cap_citta", "")), value_style)],
+        [Paragraph("<b>Email</b>", value_style), Paragraph(str(customer_data.get("email", "")), value_style)],
+        [Paragraph("<b>Telefono</b>", value_style), Paragraph(str(customer_data.get("telefono", "")), value_style)],
+        [Paragraph("<b>Oggetto</b>", value_style), Paragraph(str(customer_data.get("oggetto", "")), value_style)],
+    ]
+
+    cliente_table = Table(cliente_rows, colWidths=[38 * mm, 132 * mm])
+    cliente_table.setStyle(TableStyle([
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#1F4E78")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#D9D9D9")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(cliente_table)
+    story.append(Spacer(1, 6 * mm))
+
+    # =========================
+    # TABELLA ARTICOLI
+    # =========================
+    table_data = [[
+        Paragraph("<b>Codice</b>", cell_bold_style),
+        Paragraph("<b>Descrizione</b>", cell_bold_style),
+        Paragraph("<b>Q.tà</b>", cell_bold_style),
+        Paragraph("<b>Prezzo unit.</b>", cell_bold_style),
+        Paragraph("<b>Sconto %</b>", cell_bold_style),
+        Paragraph("<b>Netto riga</b>", cell_bold_style),
+    ]]
+
+    subtotal = 0.0
+    gross = 0.0
+
+    for _, item in items_df.iterrows():
+        qty = float(item["quantita"])
+        price = float(item["prezzo_unitario"])
+        discount = float(item["sconto_riga_pct"])
+        row_total = qty * price * (1 - discount / 100.0)
+
+        gross += qty * price
+        subtotal += row_total
+
+        codice_p = Paragraph(str(item["codice"]), cell_style)
+        descr_p = Paragraph(str(item["descrizione"]), cell_style)
+        qty_p = Paragraph(f"{qty:,.0f}".replace(",", "."), cell_style)
+        price_p = Paragraph(money(price), cell_style)
+        discount_p = Paragraph(f"{discount:.1f}%", cell_style)
+        row_total_p = Paragraph(money(row_total), cell_style)
+
+        table_data.append([
+            codice_p,
+            descr_p,
+            qty_p,
+            price_p,
+            discount_p,
+            row_total_p
+        ])
+
+    total_final = subtotal * (1 - extra_discount_pct / 100.0)
+
+    offer_table = Table(
+        table_data,
+        colWidths=[26 * mm, 80 * mm, 14 * mm, 23 * mm, 18 * mm, 24 * mm],
+        repeatRows=1
+    )
+    offer_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#D9D9D9")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.append(offer_table)
+    story.append(Spacer(1, 6 * mm))
+
+    # =========================
+    # TOTALI
+    # =========================
+    totals_data = [
+        [Paragraph("<b>Totale lordo</b>", value_style), Paragraph(money(gross), value_style)],
+        [Paragraph("<b>Subtotale dopo sconti riga</b>", value_style), Paragraph(money(subtotal), value_style)],
+        [Paragraph("<b>Sconto extra finale</b>", value_style), Paragraph(f"{extra_discount_pct:.1f}%", value_style)],
+        [Paragraph("<b>Totale finale offerta</b>", value_style), Paragraph(money(total_final), value_style)],
+    ]
+
+    totals_table = Table(totals_data, colWidths=[58 * mm, 34 * mm], hAlign="RIGHT")
+    totals_table.setStyle(TableStyle([
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#1F4E78")),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E2F0D9")),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#D9D9D9")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(totals_table)
+    story.append(Spacer(1, 6 * mm))
+
+    # =========================
+    # NOTE FINALI
+    # =========================
+    story.append(Paragraph(
+        "Prezzi espressi in EURO, IVA e costi di spedizione esclusi salvo diversa indicazione. "
+        "Sconti di riga ed eventuale sconto finale sono cumulativi.",
+        note_style
+    ))
+    story.append(Spacer(1, 3 * mm))
+    story.append(Paragraph("Fumagalli Care&Reha Srl", label_style))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
 
     # Header con loghi + titolo
     header_data = []
