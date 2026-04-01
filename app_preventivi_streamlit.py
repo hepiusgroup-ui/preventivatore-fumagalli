@@ -1250,35 +1250,33 @@ if st.session_state.cart_items:
         )
 
     if genera_pdf_cliente_completo:
-    catalog_pdfs = []
-    unmatched_codes = []
+        catalog_pdfs = []
+        unmatched_codes = []
 
-    for _, row in export_df.iterrows():
-        codice = str(row.get("codice", "")).strip()
-        try:
-            single_pdf = build_catalog_pdf_for_single_item(
-                item_row=row,
-                catalog_pdf_path=DEFAULT_CATALOGO_PDF,
-                mapping_file=DEFAULT_MAPPA_CATALOGO
+        for _, row in export_df.iterrows():
+            codice = str(row.get("codice", "")).strip()
+            try:
+                single_pdf = build_catalog_pdf_for_single_item(
+                    item_row=row,
+                    catalog_pdf_path=DEFAULT_CATALOGO_PDF,
+                    mapping_file=DEFAULT_MAPPA_CATALOGO
+                )
+                catalog_pdfs.append(single_pdf)
+            except Exception:
+                unmatched_codes.append(codice)
+
+        if catalog_pdfs:
+            schede_tecniche_pdf = merge_main_pdf_with_catalogs(b"", catalog_pdfs)
+
+            st.download_button(
+                label="Scarica PDF schede tecniche",
+                data=schede_tecniche_pdf,
+                file_name=f"schede_tecniche_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf"
             )
-            catalog_pdfs.append(single_pdf)
-        except Exception:
-            unmatched_codes.append(codice)
 
-    if catalog_pdfs:
-        schede_tecniche_pdf = merge_main_pdf_with_catalogs(b"", catalog_pdfs)
-
-        st.download_button(
-            label="Scarica PDF schede tecniche",
-            data=schede_tecniche_pdf,
-            file_name=f"schede_tecniche_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf"
-        )
-
-    if unmatched_codes:
-        st.warning(
-            "Attenzione: nessun allegato catalogo trovato per i seguenti articoli: "
-            + ", ".join(unmatched_codes)
-        )
-else:
-    st.info("Nessun articolo nel preventivo. Cerca un prodotto e aggiungilo.")
+        if unmatched_codes:
+            st.warning(
+                "Attenzione: nessun allegato catalogo trovato per i seguenti articoli: "
+                + ", ".join(unmatched_codes)
+            )
