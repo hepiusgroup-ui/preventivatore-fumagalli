@@ -1115,59 +1115,56 @@ selected_code = st.selectbox(
     key="selected_code"
 )
 
-selected_rows = results_df.loc[results_df["codice"] == selected_code]
+selected_row = results_df.loc[results_df["codice"] == selected_code].iloc[0]
+current_price = 0.0 if pd.isna(selected_row["prezzo"]) else float(selected_row["prezzo"])
 
-if not selected_rows.empty:
-    selected_row = selected_rows.iloc[0]
-    current_price = 0.0 if pd.isna(selected_row["prezzo"]) else float(selected_row["prezzo"])
+if st.session_state.last_selected_code != selected_code:
+    st.session_state.qty_add = 1.0
+    st.session_state.disc_add = 0.0
+    st.session_state.price_add = current_price
+    st.session_state.last_selected_code = selected_code
 
-    if st.session_state.last_selected_code != selected_code:
-        st.session_state.qty_add = 1.0
-        st.session_state.disc_add = 0.0
-        st.session_state.price_add = current_price
-        st.session_state.last_selected_code = selected_code
+add1, add2, add3, add4 = st.columns([1, 1, 1, 1.4])
 
-    add1, add2, add3, add4 = st.columns([1, 1, 1, 1.4])
+with add1:
+    qty_input = st.number_input(
+        "Quantità",
+        min_value=1.0,
+        step=1.0,
+        key="qty_add"
+    )
 
-    with add1:
-        qty_input = st.number_input(
-            "Quantità",
-            min_value=1.0,
-            step=1.0,
-            key="qty_add"
-        )
+with add2:
+    row_discount_input = st.number_input(
+        "Sconto riga %",
+        min_value=0.0,
+        max_value=100.0,
+        step=0.5,
+        key="disc_add"
+    )
 
-    with add2:
-        row_discount_input = st.number_input(
-            "Sconto riga %",
-            min_value=0.0,
-            max_value=100.0,
-            step=0.5,
-            key="disc_add"
-        )
+with add3:
+    manual_price_input = st.number_input(
+        "Prezzo unit. ex IVA",
+        min_value=0.0,
+        step=1.0,
+        key="price_add",
+        help="Se il prezzo manca nel listino, inseriscilo manualmente qui."
+    )
 
-    with add3:
-        manual_price_input = st.number_input(
-            "Prezzo unit. ex IVA",
-            min_value=0.0,
-            step=1.0,
-            key="price_add",
-            help="Se il prezzo manca nel listino, inseriscilo manualmente qui."
-        )
-
-    with add4:
-        st.write("")
-        st.write("")
-        if st.button("Aggiungi al preventivo"):
-            st.session_state.cart_items.append({
-                "codice": selected_row["codice"],
-                "descrizione": selected_row["descrizione"],
-                "quantita": float(qty_input),
-                "prezzo_unitario": float(manual_price_input),
-                "sconto_riga_pct": float(row_discount_input),
-                "foto": selected_row.get("foto", ""),
-                "sorgente": selected_row.get("sorgente", ""),
-            })
-            st.success(f"Aggiunto: {selected_row['codice']}")
+with add4:
+    st.write("")
+    st.write("")
+    if st.button("Aggiungi al preventivo"):
+        st.session_state.cart_items.append({
+            "codice": selected_row["codice"],
+            "descrizione": selected_row["descrizione"],
+            "quantita": float(qty_input),
+            "prezzo_unitario": float(manual_price_input),
+            "sconto_riga_pct": float(row_discount_input),
+            "foto": selected_row.get("foto", ""),
+            "sorgente": selected_row.get("sorgente", ""),
+        })
+        st.success(f"Aggiunto: {selected_row['codice']}")
 else:
     st.warning("Articolo non trovato nei risultati aggiornati.")
