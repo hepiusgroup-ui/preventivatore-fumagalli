@@ -1077,9 +1077,18 @@ if st.button("Cerca articoli", type="primary"):
 
     if selected_sources:
         filtered_df = filtered_df[filtered_df["sorgente"].isin(selected_sources)].copy()
+    else:
+        filtered_df = pd.DataFrame(columns=master_df.columns)
 
-    st.session_state.search_results_cache = smart_search(query, filtered_df, limit=int(max_results))
+    if not filtered_df.empty:
+        st.session_state.search_results_cache = smart_search(query, filtered_df, limit=int(max_results))
+    else:
+        st.session_state.search_results_cache = pd.DataFrame()
+
     st.session_state.last_selected_code = None
+
+    if "selected_code" in st.session_state:
+        del st.session_state["selected_code"]
 
 results_df = st.session_state.search_results_cache
 
@@ -1092,12 +1101,19 @@ if not results_df.empty:
     display_df["prezzo"] = display_df["prezzo"].apply(lambda x: "" if pd.isna(x) else float(x))
     st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-    selected_code = st.selectbox(
-        "Seleziona articolo da aggiungere",
-        options=results_df["codice"].tolist(),
-        format_func=lambda code: f"{code} - {results_df.loc[results_df['codice'] == code, 'descrizione'].iloc[0]}",
-        key="selected_code"
-    )
+    code_to_desc = (
+    results_df[["codice", "descrizione"]]
+    .drop_duplicates(subset=["codice"])
+    .set_index("codice")["descrizione"]
+    .to_dict()
+)
+
+selected_code = st.selectbox(
+    "Seleziona articolo da aggiungere",
+    options=results_df["codice"].tolist(),
+    format_func=lambda code: f"{code} - {code_to_desc.get(code, code)}",
+    key="selected_code"
+)
 
     selected_row = results_df.loc[results_df["codice"] == selected_code].iloc[0]
     current_price = 0.0 if pd.isna(selected_row["prezzo"]) else float(selected_row["prezzo"])
