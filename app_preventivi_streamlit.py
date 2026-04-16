@@ -1115,7 +1115,10 @@ selected_code = st.selectbox(
     key="selected_code"
 )
 
-    selected_row = results_df.loc[results_df["codice"] == selected_code].iloc[0]
+selected_rows = results_df.loc[results_df["codice"] == selected_code]
+
+if not selected_rows.empty:
+    selected_row = selected_rows.iloc[0]
     current_price = 0.0 if pd.isna(selected_row["prezzo"]) else float(selected_row["prezzo"])
 
     if st.session_state.last_selected_code != selected_code:
@@ -1125,6 +1128,7 @@ selected_code = st.selectbox(
         st.session_state.last_selected_code = selected_code
 
     add1, add2, add3, add4 = st.columns([1, 1, 1, 1.4])
+
     with add1:
         qty_input = st.number_input(
             "Quantità",
@@ -1132,6 +1136,7 @@ selected_code = st.selectbox(
             step=1.0,
             key="qty_add"
         )
+
     with add2:
         row_discount_input = st.number_input(
             "Sconto riga %",
@@ -1140,6 +1145,7 @@ selected_code = st.selectbox(
             step=0.5,
             key="disc_add"
         )
+
     with add3:
         manual_price_input = st.number_input(
             "Prezzo unit. ex IVA",
@@ -1148,6 +1154,7 @@ selected_code = st.selectbox(
             key="price_add",
             help="Se il prezzo manca nel listino, inseriscilo manualmente qui."
         )
+
     with add4:
         st.write("")
         st.write("")
@@ -1162,137 +1169,5 @@ selected_code = st.selectbox(
                 "sorgente": selected_row.get("sorgente", ""),
             })
             st.success(f"Aggiunto: {selected_row['codice']}")
-
-st.markdown("## Preventivo in costruzione")
-
-if st.session_state.cart_items:
-    editable_df = pd.DataFrame(st.session_state.cart_items)
-    editable_df = st.data_editor(
-        editable_df,
-        use_container_width=True,
-        num_rows="dynamic",
-        hide_index=True,
-        column_config={
-            "codice": st.column_config.TextColumn("Codice", disabled=True),
-            "descrizione": st.column_config.TextColumn("Descrizione", width="large"),
-            "quantita": st.column_config.NumberColumn("Q.tà", min_value=0.0, step=1.0),
-            "prezzo_unitario": st.column_config.NumberColumn("Prezzo unit. ex IVA", min_value=0.0, step=1.0),
-            "sconto_riga_pct": st.column_config.NumberColumn("Sconto riga %", min_value=0.0, max_value=100.0, step=0.5),
-            "foto": st.column_config.TextColumn("Foto", help="Percorso file immagine, se disponibile"),
-            "sorgente": st.column_config.TextColumn("Sorgente", disabled=True),
-        },
-        key="cart_editor"
-    )
-    st.session_state.cart_items = editable_df.to_dict(orient="records")
-
-    c1, c2, c3 = st.columns([1, 1, 1])
-    with c1:
-        extra_discount_pct = st.number_input(
-            "Sconto extra finale %",
-            min_value=0.0,
-            max_value=100.0,
-            value=0.0,
-            step=0.5
-        )
-    with c2:
-        if st.button("Svuota preventivo"):
-            st.session_state.cart_items = []
-            st.rerun()
-    with c3:
-        if st.button("Rimuovi ultima riga"):
-            st.session_state.cart_items = st.session_state.cart_items[:-1]
-            st.rerun()
-
-    totals = compute_totals(st.session_state.cart_items, extra_discount_pct)
-    k1, k2, k3 = st.columns(3)
-    k1.metric("Totale lordo", money(totals["lordo"]))
-    k2.metric("Subtotale dopo sconti riga", money(totals["subtotale"]))
-    k3.metric("Totale finale offerta", money(totals["totale_finale"]))
-
-    export_df = pd.DataFrame(st.session_state.cart_items)
-    customer_data = {
-        "cliente": cliente,
-        "contatto": contatto,
-        "indirizzo": indirizzo,
-        "cap_citta": cap_citta,
-        "email": email,
-        "telefono": telefono,
-        "oggetto": oggetto,
-        "note": note,
-    }
-
-    excel_bytes = build_quote_excel(
-        customer_data=customer_data,
-        items_df=export_df,
-        extra_discount_pct=float(extra_discount_pct),
-        fumagalli_logo=fum_logo_path,
-        hepius_logo=hep_logo_path
-    )
-
-    main_pdf_bytes = build_quote_pdf(
-        customer_data=customer_data,
-        items_df=export_df,
-        extra_discount_pct=float(extra_discount_pct),
-        fumagalli_logo=fum_logo_path,
-        hepius_logo=hep_logo_path
-    )
-
-    file_name = f"preventivo_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-    pdf_file_name = f"preventivo_cliente_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
-
-    dl1, dl2, dl3 = st.columns(3)
-
-    with dl1:
-        st.download_button(
-            label="Scarica preventivo Excel",
-            data=excel_bytes,
-            file_name=file_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-    with dl2:
-        st.download_button(
-            label="Scarica PDF preventivo",
-            data=main_pdf_bytes,
-            file_name=pdf_file_name,
-            mime="application/pdf"
-        )
-
-    with dl3:
-        genera_pdf_cliente_completo = st.checkbox(
-            "PDF cliente completo con allegati catalogo",
-            value=True,
-            help="Unisce preventivo PDF e schede catalogo prodotti in un unico file."
-        )
-
-    if genera_pdf_cliente_completo:
-        catalog_pdfs = []
-        unmatched_codes = []
-
-        for _, row in export_df.iterrows():
-            codice = str(row.get("codice", "")).strip()
-            try:
-                single_pdf = build_catalog_pdf_for_single_item(
-                    item_row=row,
-                    catalog_pdf_path=DEFAULT_CATALOGO_PDF,
-                    mapping_file=DEFAULT_MAPPA_CATALOGO
-                )
-                catalog_pdfs.append(single_pdf)
-            except Exception:
-                unmatched_codes.append(codice)
-
-        if catalog_pdfs:
-            schede_tecniche_pdf = merge_main_pdf_with_catalogs(b"", catalog_pdfs)
-
-            st.download_button(
-                label="Scarica PDF schede tecniche",
-                data=schede_tecniche_pdf,
-                file_name=f"schede_tecniche_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                mime="application/pdf"
-            )
-
-        if unmatched_codes:
-            st.warning(
-                "Attenzione: nessun allegato catalogo trovato per i seguenti articoli: "
-                + ", ".join(unmatched_codes)
-            )
+else:
+    st.warning("Articolo non trovato nei risultati aggiornati.")
