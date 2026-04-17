@@ -1236,7 +1236,7 @@ if st.session_state.cart_items:
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
-st.download_button(
+    st.download_button(
     label="Scarica PDF preventivo",
     data=main_pdf_bytes,
     file_name=f"preventivo_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
