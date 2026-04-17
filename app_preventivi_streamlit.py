@@ -789,6 +789,7 @@ def build_quote_pdf(
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
+    
 def merge_main_pdf_with_catalogs(main_pdf_bytes: bytes, catalog_pdf_list: List[bytes]) -> bytes:
     writer = PdfWriter()
 
@@ -1171,3 +1172,74 @@ if not results_df.empty:
                 st.success(f"Aggiunto: {selected_row['codice']}")
     else:
         st.warning("Articolo non trovato nei risultati aggiornati.")
+st.markdown("## Preventivo in costruzione")
+
+if st.session_state.cart_items:
+
+    editable_df = pd.DataFrame(st.session_state.cart_items)
+
+    editable_df = st.data_editor(
+        editable_df,
+        use_container_width=True,
+        num_rows="dynamic",
+        hide_index=True,
+        key="cart_editor"
+    )
+
+    st.session_state.cart_items = editable_df.to_dict(orient="records")
+
+    extra_discount_pct = st.number_input(
+        "Sconto extra finale %",
+        min_value=0.0,
+        max_value=100.0,
+        value=0.0,
+        step=0.5
+    )
+
+    totals = compute_totals(st.session_state.cart_items, extra_discount_pct)
+
+    st.metric("Totale finale offerta escluso IVA", money(totals["totale_finale"]))
+
+    export_df = pd.DataFrame(st.session_state.cart_items)
+
+    customer_data = {
+        "cliente": cliente,
+        "contatto": contatto,
+        "indirizzo": indirizzo,
+        "cap_citta": cap_citta,
+        "email": email,
+        "telefono": telefono,
+        "oggetto": oggetto,
+        "note": note,
+    }
+
+    excel_bytes = build_quote_excel(
+        customer_data=customer_data,
+        items_df=export_df,
+        extra_discount_pct=float(extra_discount_pct),
+        fumagalli_logo=fum_logo_path,
+        hepius_logo=hep_logo_path
+    )
+
+    main_pdf_bytes = build_quote_pdf(
+        customer_data=customer_data,
+        items_df=export_df,
+        extra_discount_pct=float(extra_discount_pct),
+        fumagalli_logo=fum_logo_path,
+        hepius_logo=hep_logo_path
+    )
+
+    st.download_button("Scarica Excel", excel_bytes)
+    st.download_button("Scarica PDF", main_pdf_bytes)
+
+    if st.checkbox("Schede tecniche"):
+        pdfs = []
+        for _, row in export_df.iterrows():
+            try:
+                pdfs.append(build_catalog_pdf_for_single_item(row))
+            except:
+                pass
+
+        if pdfs:
+            merged = merge_main_pdf_with_catalogs(b"", pdfs)
+            st.download_button("Scarica schede tecniche", merged)
