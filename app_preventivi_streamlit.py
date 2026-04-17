@@ -1229,17 +1229,40 @@ if st.session_state.cart_items:
         hepius_logo=hep_logo_path
     )
 
-    st.download_button("Scarica Excel", excel_bytes)
-    st.download_button("Scarica PDF", main_pdf_bytes)
+    st.download_button(
+    label="Scarica preventivo Excel",
+    data=excel_bytes,
+    file_name=f"preventivo_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
-    if st.checkbox("Schede tecniche"):
-        pdfs = []
-        for _, row in export_df.iterrows():
-            try:
-                pdfs.append(build_catalog_pdf_for_single_item(row))
-            except:
-                pass
+st.download_button(
+    label="Scarica PDF preventivo",
+    data=main_pdf_bytes,
+    file_name=f"preventivo_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+    mime="application/pdf"
+)
 
-        if pdfs:
-            merged = merge_main_pdf_with_catalogs(b"", pdfs)
-            st.download_button("Scarica schede tecniche", merged)
+if st.checkbox("Schede tecniche"):
+    pdfs = []
+    for _, row in export_df.iterrows():
+        try:
+            pdfs.append(
+                build_catalog_pdf_for_single_item(
+                    item_row=row,
+                    catalog_pdf_path=DEFAULT_CATALOGO_PDF,
+                    mapping_file=DEFAULT_MAPPA_CATALOGO
+                )
+            )
+        except Exception:
+            pass
+
+    if pdfs:
+        merged = merge_main_pdf_with_catalogs(b"", pdfs)
+
+        st.download_button(
+            label="Scarica PDF schede tecniche",
+            data=merged,
+            file_name=f"schede_tecniche_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf"
+        )
